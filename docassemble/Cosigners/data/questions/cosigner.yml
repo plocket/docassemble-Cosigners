@@ -17,7 +17,7 @@ metadata:
 ---
 modules:
   - docassemble.VirtualCourtToolbox.misc
-  - .signing_party
+  - .cosigner
 ---
 objects:
   - redis: DARedis
@@ -127,17 +127,23 @@ code: |
     
   background_response()
 ---
+# Makes sure all emails are in the same email thread
+template: email_subject
+content: |
+  Your legal document
+---
 template: signed_email_template
 subject: |
-  ${ signer } has signed your Motion to Dismiss
+  ${ email_subject }
+#  ${ signer } has signed your Motion to Dismiss
 content: |
   ${ redis.get_data( signature_data_id )['user_names'] },
 
-  ${ signer } has signed your Motion to Dismiss a Non-Essential Eviction. [Tap here to go back to the form and see your document](${ redis.get_data( signature_data_id )['interview_url'] }).
+  ${ signer } has signed your document. [Tap here to go back to the form and see it](${ redis.get_data( signature_data_id )['interview_url'] }).
 ---
 template: signed_sms_template
 content: |
-  ${ signer.familiar() } has signed your Motion to Dismiss. Use the link to see your document. ${ redis.get_data( signature_data_id )['interview_url'] }
+  ${ signer.familiar() } has signed your document. Use the link to see it. ${ redis.get_data( signature_data_id )['interview_url'] }
 ---
 id: x.after_unwilling_to_sign_saved
 event: x.after_unwilling_to_sign_saved
@@ -164,11 +170,12 @@ template: unwilling_email_template
 # at ${ signer.signature_email if defined('signer.signature_email') else signer.signature_number } (something complex to show both)
 # TODO: When feature is ready, add that they can edit/resend to cosigner
 subject: |
-  ${ signer } will not sign you Motion to Dismiss
+  ${ email_subject }
+#  ${ signer } will not sign you Motion to Dismiss
 content: |
   ${ redis.get_data( signature_data_id )['user_names'] },
   
-  We sent ${ signer } a link to your Motion to Dismiss a Non-Essential Eviction. They said they would not sign the motion. Call or talk to ${ signer } to find out if the contact information you wrote is correct. If it is wrong, fill out a new form with the correct information.
+  We sent ${ signer } a link to your document. They said they would not sign the motion. Call or talk to ${ signer } to find out if the contact information you wrote is correct. If it is wrong, fill out a new form with the correct information.
 
   If ${ signer } does not want to sign the motion, you can still print or download it without ${ signer }'s signature and file it with the court.
 
@@ -176,7 +183,7 @@ content: |
 ---
 template: unwilling_sms_template
 content: |
-  ${ signer.familiar() } will not sign your Motion to Dismiss. Use the link to see your document. ${ redis.get_data( signature_data_id )['interview_url'] }
+  ${ signer.familiar() } will not sign your document. Use the link to see it. ${ redis.get_data( signature_data_id )['interview_url'] }
 ---
 ###################
 # Interfacing directly with script for user choosing other device to sign on

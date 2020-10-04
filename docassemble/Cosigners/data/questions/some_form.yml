@@ -50,40 +50,51 @@ code: |
   
   # Real code
   users[0].name.first
+  users[0].mobile_number
   users.gathered = True
   users.there_is_another = False
   
-  for codef in codefendants:
-    codef.get_signature_info
-  codefendants.complete = True
+  codefendants.gather()
   # Set signers that will sign on this device or not
-  collect_signer_types
+  collect_signer_types # It would be nice if this didn't have to be in here
   
   preview_screen  # Must define form_to_sign
   users[0].sign_on_device
 ---
+# Needed for cosigner functionality
 code: |
-  all_signers = users + codefendants
+  codefendants[i].get_signature_info
+  codefendants[i].complete = True
 ---
+# Needed for cosigner functionality
+code: |
+  cosigners = codefendants
+---
+#####
+reconsider: cosigners
+code: |
+  all_signers = users + cosigners
+---
+#####
 reconsider:
+  - cosigners
   - all_signers
 code: |
-  who_sign_with_pen = [codef for codef in codefendants if codef.sign_method == 'physical']
-  all_digital_codefs = [codef for codef in codefendants if codef not in who_sign_with_pen]
+  who_sign_with_pen = [cos for cos in cosigners if cos.sign_method == 'physical']
+  all_digital_cosigners = [cos for cos in cosigners if cos not in who_sign_with_pen]
   # Get signatures that will taken on this device
-  who_proxy_sign_for = [codef for codef in codefendants if codef.sign_method == 'proxy']
-  who_else_on_device = [codef for codef in codefendants if codef.sign_method == 'local']
+  who_proxy_sign_for = [cos for cos in cosigners if cos.sign_method == 'proxy']
+  who_else_on_device = [cos for cos in cosigners if cos.sign_method == 'local']
   local_signers = users + who_proxy_sign_for + who_else_on_device
   # Used in here and for sending out for signatures (multiuser code)
   remote_signers = all_signers.difference(local_signers + who_sign_with_pen)
   collect_signer_types = True
 ---
+####
 code: |
-  unwilling_codefs = [signer for signer in codefendants if hasattr(signer, 'willing_to_sign') and signer.willing_to_sign is False]
+  unwilling_cosigners = [cos for cos in cosigners if hasattr(cos, 'willing_to_sign') and cos.willing_to_sign is False]
 ---
-# After the user signs, the links for the co-signers get sent
-event: x.after_signature
-generic object: Individual
+####
 code: |
   custom_signature_redis_data
   set_initial_redis_data
@@ -95,7 +106,14 @@ code: |
   process_action()  # Needed? Probably - we want the requests sent now
   for local in local_signers:
     local.signature
-  
+    
+  get_cosigner_signatures = True
+---
+# After the user signs, the links for the co-signers get sent
+event: x.after_signature
+generic object: Individual
+code: |
+  get_cosigner_signatures
   users[0].status
 ---
 # It's weird to ask this if they didn't start on another device and there's no provision for that right now. Could set a flag at the very start if we really want that.
@@ -104,20 +122,22 @@ code: |
 #  Do you want to finish on your phone?
 #yesno: wants_to_finish_on_phone
 ---
+####
 event: phone_end
 question: |
   Thank you
 subquestion: |
   You can finish on your original device.
 ---
-id: trigger requests for signatures
+####
 code: |
   for remote in remote_signers:
     remote.signature_url_was_sent
   if len(remote_signers) > 0: trigger_initial_notification
   request_remote_signatures = True
 ---
-id: do you have cosigners
+#### Basic questions
+id: do you have codefendants
 question: |
   Is anyone filing with you?
 fields:
@@ -127,6 +147,7 @@ fields:
       - I am filing this motion alone: False
       - I talked to them and at least one of them wants to file with me: True
 ---
+#### Basic questions
 id: codefendants
 question: |
   Is anyone else filing this motion with you?  
@@ -136,7 +157,10 @@ subquestion: |
   % endif
 yesno: codefendants.there_is_another
 ---
+#### There may already be a basic question for this
 id: cosigner names
+reconsider: cosigners
+generic object: PeopleList
 question: |
   % if i == 0:
   What is your cosigner's name?
@@ -144,15 +168,16 @@ question: |
   What is your ${ ordinal(i) } cosigner's name?
   % endif
 fields:
-  - First Name: codefendants[i].name.first
-  - Middle Name: codefendants[i].name.middle
+  - First Name: x[i].name.first
+  - Middle Name: x[i].name.middle
     required: False
-  - Last Name: codefendants[i].name.last
-  - Suffix: codefendants[i].name.suffix
+  - Last Name: x[i].name.last
+  - Suffix: x[i].name.suffix
     code: |
       name_suffix()
     required: False
 ---
+####
 id: how to send to cosigner
 generic object: Individual
 question: |
@@ -170,7 +195,7 @@ subquestion: |
   
   How are you going to get ${ x }'s signature on this motion?
 fields:
-  - no label: codefendants[i].sign_method
+  - no label: x.sign_method
     datatype: radio
     choices:
       - __Email__ ${ x } a link: email
@@ -187,6 +212,7 @@ fields:
     js show if: |
       val("x.sign_method") == "text"
 ---
+####
 id: cosigner court contact info
 generic object: Individual
 question: |
@@ -202,6 +228,7 @@ fields:
     datatype: email
     required: False
 ---
+####
 id: get cosigner info
 generic object: Individual
 code: |
@@ -214,10 +241,10 @@ reconsider:
   - form_to_sign
 id: preview
 question: |
-  Preview your motion
+  Preview your document
 subquestion: |
 
-  Tap the motion below to open it in a new window.
+  Tap the document below to open it in a new window.
   
   Use the "Back" button to find the screen to fix mistakes.
   
@@ -230,7 +257,7 @@ code: |
   form_to_sign.set_attributes(private=False, persistent=True)
 ---
 attachment:
-  docx template file: signatures.docx
+  docx template file: test_signatures.docx
   variable name: preview_doc
 ---
 reconsider:
@@ -240,11 +267,12 @@ code: |
   final_form.set_attributes(private=False, persistent=True)
 ---
 attachment: 
-  docx template file: signatures.docx
+  docx template file: test_signatures.docx
   variable name: signatures_doc  
   filename: signatures-doc
   name: All signatures
 ---
+####
 # Only triggered for signers who user is signing for.
 # Using intrinsic names is not enough.
 id: proxy signature
@@ -262,17 +290,20 @@ progress: 99
 # Interface with redis handler
 #######################
 ---
+####?
 # Keep in as the default
 code: |
   # When the saved redis data will expire: days * hours * minutes * seconds
   # https://docassemble.org/docs/objects.html#DARedis
-  remote_siganure_expiration_ms = 31 * 24 * 60 * 60  # 31 days
+  remote_siganure_expiration_ms = 1 * 24 * 60 * 60  # 1 day
 ---
+####
 # Keep in as the default
 code: |
   # DEVELOPERS: Use the name of your own remote entrypoint file
   remote_signer_url_end = user_info().package + ':cosigner.yml'
 ---
+####
 reconsider:
   - form_to_sign
   - final_form
@@ -281,44 +312,45 @@ code: |
   custom_signature_redis_data = {
     'user_names': comma_and_list(users),
     'preview': form_to_sign,
-    'final_form': final_form,  # only works because it's docx
+    #'final_form': final_form,  # not updating yet
     'user_email': users[0].email if defined('users[0].email') else None,
     'user_mobile': users[0].mobile_number if defined('users[0].mobile_number') else None,
+    # So users will get notifications when users sign
     'interview_url': shortenMe( interview_url_action('check_status', party_id=users[0].id) ).shortenedURL
   }
 ---
-# Possible way to deal with edited answers
-event: update_custom_redis_data
-code: |
-  reconsider( 'custom_signature_redis_data' )
----
-id: sms template multiuser
-template: codefendants[i].sms_template
+####
+id: cosigner sms
+generic object: Individual
+template: x.sms_template
 content: |
-  ${ codefendants[i].familiar() }, please review and sign ${ users[0].familiar() }’s motion about your eviction case. Use this link. ${ codefendants[i].cosigner_url }
+  ${ x.familiar() }, please review and sign ${ users[0].familiar() }’s legal document. Use this link. ${ x.cosigner_url }
 ---
-id: codefendant email
-reconsider:
-  - form_to_sign
-template: codefendants[i].email_template
+####
+id: cosigner email
+reconsider: form_to_sign
+generic object: Individual
+template: x.email_template
 subject: |
-  ${ users[0] } needs your signature on a court document.
+  ${ users[0] } needs your signature on a legal document.
 content: |
-  Dear ${ codefendants[i] },
+  Dear ${ x },
 
-  ${ users[0] } got a Summary Process Summons and Complaint listing your name. Your landlord is trying to evict you.  ${ users[0] } filled out a Motion to Dismiss to tell the court you should not be evicted. If you want to tell the court this too, sign the motion.
+  ${ users[0] } created a legal document. Review it to see if you are willing to sign it.
 
-  [Tap here to look at a preview the final Motion to Dismiss](${ form_to_sign.url_for(external=True) }).
+  [Tap here to look at the document](${ form_to_sign.url_for(external=True) }).
 
-  [Tap here to sign the document](${ codefendants[i].cosigner_url }).
+  [Tap here to sign the document](${ x.cosigner_url }).
 ---
-id: first notifications to user
+####
+id: first user notifications
 code: |
-  background_action('send_initial_notification')
+  background_action('send_initial_user_notifications')
   trigger_initial_notification = True
 ---
+####
 # Can be done with less nesting, but I find it less readable
-event: send_initial_notification
+event: send_initial_user_notifications
 code: |
   if len(remote_signers) > 0 and not task_performed('send_initial_sms'):
     if defined( 'users[0].device_number' ) and users[0].device_number:
@@ -332,31 +364,33 @@ code: |
 
   background_response()
 ---
-id: cosigner links sent notification sms
+####
+id: links sent to sms
 template: initial_sms_template
 content: |
   % if len(remote_signers) > 1:
-  ${ users[0].familiar() }, we sent your Motion to Dismiss to your codefendants. Use the link to see your document. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
+  ${ users[0].familiar() }, we sent your document to your cosigners. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
   % else:
-  ${ users[0].familiar() }, we sent your Motion to Dismiss to your codefendant. Use the link to see your document. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
+  ${ users[0].familiar() }, we sent your document to your cosigner. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
   % endif
 ---
-id: cosigner links sent notification email
+####
+id: links sent to email
 template: initial_email_template
 subject: |
-  Your Motion to Dismiss was sent to ${ comma_and_list( remote_signers ) }
+  Your document was sent to ${ comma_and_list( remote_signers ) }
 content: |
   ${ users[0] },
   
   % if len( remote_signers ) > 1:
-  We asked ${ comma_and_list( remote_signers ) } to sign your Motion to Dismiss. We will e-mail you when they sign it.
+  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when they sign it.
   
-  You can also [tap here to check if ${ comma_and_list( remote_signers ) } have signed the motion](${ interview_url_action('check_status', party_id=users[0].id) }).
+  You can also [tap here to check if ${ comma_and_list( remote_signers ) } have signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
 
   % else:
-  We asked ${ comma_and_list( remote_signers ) } to sign your Motion to Dismiss. We will e-mail you when ${ remote_signers } signs it.
+  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when ${ remote_signers } signs it.
 
-  You can also [tap here to check if ${ comma_and_list( remote_signers ) } has signed the motion](${ interview_url_action('check_status', party_id=users[0].id) }).
+  You can also [tap here to check if ${ remote_signers } has signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
   % endif
 ---
 # Must come from an `action`. Needed for security.
@@ -376,29 +410,19 @@ code: |
 # Interfacing with code to let user choose which device to sign on
 ######################
 ---
-#id: number to text for signature
-#generic object: Individual
-#question: |
-#  Sign on a phone
-#subquestion: |
-#  What number do you want to text this to for a signature?
-#fields:
-#  - no label: x.device_number
-#    default: ${ showifdef( x.attr_name( 'mobile_number' )) }
----
+####**
 generic object: Individual
 code: |
   # TODO: Should this be in sign_on_device.yml?
-  # TODO: Send with action arguments (in templates)
-  # No email for MVP?
   if defined( x.attr_name( 'device_number' )):
     x.message_result = send_sms(task='send link to other device', to=x.device_number, template=x.sms_device_template)
   x.send_signature_link = True  # Used by sign_on_device.yml
 ---
+####**
 generic object: Individual
 template: x.sms_device_template
-content:
-  ${ x.familiar() }, tap the link to sign your Motion to Dismiss. ${ device_choice_url }
+content: |
+  ${ x.familiar() }, tap the link to sign your document. ${ device_choice_url }
 ---
 generic object: Individual
 code: |
@@ -406,13 +430,17 @@ code: |
   long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
   device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
 ---
+####**
 code: |
+  # x.device_id?
   signature_data_id = get_random_chars()
 ---
+####
 generic object: Individual
 code: |
   x.id = get_random_chars()
 ---
+####
 code: |
   import random
   import string
@@ -427,15 +455,17 @@ code: |
 #################
 # Interview-specific UI
 #################
-id: if all signed send email
+---
+####
+id: check all signed
 reconsider:
   - get_stored_data
   - collect_signer_types
 # Is requested when people check on the status of the signatures
 code: |
   # Statuses: sent, signed, unwilling, physical
-  for codef in all_digital_codefs:
-    if not defined( codef.attr_name( 'signature' )):
+  for cos in all_digital_cosigners:
+    if not defined( cos.attr_name( 'signature' )):
       all_signatures_in = False
       break
   else:
@@ -444,47 +474,25 @@ code: |
   get_status_of_signatures = True
 ---
 # Each variable is a chunk of text. Be aware of the `if` statements and move things around as you see fit.
-id: signature status
+id: signature status and download
 event: users[0].status
 reconsider:
   - get_stored_data
   - collect_signer_types
-  - unwilling_codefs
+  - unwilling_cosigners
   - all_signatures_in
   - signatures_doc
   - final_form
 question: |
   % if all_signatures_in:
-  Your Motion to Dismiss is ready
+  Your document is ready
   % else:
-  Some people still need to sign your Motion to Dismiss
+  Some people still need to sign your document
   % endif
 subquestion: |
 
-  % if all_signatures_in:
-    ${ every_digital_signature_in_template }
-    
-  % else:
-  
-    % if len( unwilling_codefs ) > 0:
-    ${ unwilling_list_template }
+  ${ cosigner_status_section }
 
-    ${ unwilling_instructions }
-    <hr/>
-    % endif
-
-    ${ waiting_list_template }
-
-    ${ signed_list_template }
-  
-  % endif
-  
-  ${ paper_signature_list_template }
-  
-  % if len( remote_signers ) > 0:
-  ${ action_button_html('javascript:daShowSpinner();daRefreshSubmit()', label='Check again <i class="fas fa-sync-alt"></i>', size='md') }
-  % endif
-  
   % if codefendants.number() > 0:
   <hr/>
   % endif
@@ -531,53 +539,85 @@ css: |
 ---
 # Edit below to change the contents of the status page
 ---
-template: signture_status_lists
+####
+template: cosigner_status_section
+reconsider:
+  - get_stored_data
+  - collect_signer_types
+  - unwilling_cosigners
 content: |
   
----
-template: every_digital_signature_in_template
-content: |
-  % if len( all_digital_codefs ) > 1:
-  :check: ${ comma_and_list( all_digital_codefs )} have signed.
-  % elif len( all_digital_codefs ) > 0:
-  :check: ${ all_digital_codefs[0] } has signed.
+  % if all_signatures_in:
+    ${ every_digital_signature_in_template }
+    
+  % else:
+  
+    % if len( unwilling_cosigners ) > 0:
+    ${ unwilling_list_template }
+
+    ${ unwilling_instructions }
+    <hr/>
+    % endif
+
+    ${ waiting_list_template }
+
+    ${ signed_list_template }
+  
+  % endif
+  
+  ${ paper_signature_list_template }
+  
+  % if len( remote_signers ) > 0:
+  ${ action_button_html('javascript:daShowSpinner();daRefreshSubmit()', label='Check again <i class="fas fa-sync-alt"></i>', size='md') }
   % endif
 ---
+####
+template: every_digital_signature_in_template
+content: |
+  % if len( all_digital_cosigners ) > 1:
+  :check: ${ comma_and_list( all_digital_cosigners )} have signed.
+  % elif len( all_digital_cosigners ) > 0:
+  :check: ${ all_digital_cosigners[0] } has signed.
+  % endif
+---
+####
 template: unwilling_list_template
 content: |
-  % for signer in unwilling_codefs:
+  % for signer in unwilling_cosigners:
   :times: ${ signer } refused to sign your motion. We sent 
   it to ${ signer } at **${ signer.signature_message_endpoint }**.[BR]
   % endfor
 ---
+####
 template: unwilling_instructions
 content: |
-  % if len( unwilling_codefs ) > 1:
-  **You do not need ${ comma_and_list([str(person) + "'s" for person in unwilling_codefs]) } signatures
+  % if len( unwilling_cosigners ) > 1:
+  **You do not need ${ comma_and_list([str(person) + "'s" for person in unwilling_cosigners]) } signatures
   to file the motion. You can:**
 
-  * Download and file the motion. You can ask
-  ${ comma_and_list(unwilling_codefs) } to sign the paper
+  * Download and file the document. You can ask
+  ${ comma_and_list(unwilling_cosigners) } to sign the paper
   copy. If they do not sign the paper copy, you can cross out their
   names and file it anyway. **Or,**
   * Start the interview again. Use the 'Restart'
-  button. You can leave out ${ comma_and_list(unwilling_codefs) }. **Or,**
-  * You can file the motion as it is.
+  button. You can leave out ${ comma_and_list(unwilling_cosigners) }. **Or,**
+  * You can file the document as it is.
   
-  % elif len( unwilling_codefs ) > 0:
-  **You do not need ${ unwilling_codefs[0] }'s signature
-  to file the motion. You can:**
+  % elif len( unwilling_cosigners ) > 0:
+  **You do not need ${ unwilling_cosigners[0] }'s signature
+  to file the document. You can:**
 
-  * Download and file the motion. You can ask
-  ${ unwilling_codefs[0] } to sign the paper
+  * Download and file the document. You can ask
+  ${ unwilling_cosigners[0] } to sign the paper
   copy. If they do not sign the paper copy, you can cross out their
   name and file it anyway. **Or,**
   * Start the interview again. Use the 'Restart'
-  button. You can leave out ${ unwilling_codefs[0] }. **Or,**
-  * You can file the motion as it is.
+  button. You can leave out ${ unwilling_cosigners[0] }. **Or,**
+  * You can file the document as it is.
   
   % endif
 ---
+####
 template: waiting_list_template
 content: |
   % for signer in remote_signers:
@@ -588,6 +628,7 @@ content: |
   % endif
   % endfor
 ---
+####
 template: signed_list_template
 content: |
   % for signer in codefendants:
@@ -596,6 +637,7 @@ content: |
   % endif
   % endfor
 ---
+####
 template: paper_signature_list_template
 content: |
   % if len( who_sign_with_pen ) > 0:
@@ -606,6 +648,7 @@ content: |
 #  :pen-alt: ${ signer } will sign on the document when you print it.[BR]
 #  % endfor
 ---
+####
 # `template` so it gets recalculated each time (I think)
 # Separate so it can be reused and the text for it can be easily edited.
 generic object: Individual
