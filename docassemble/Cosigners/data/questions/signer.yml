@@ -19,7 +19,7 @@ code: |
   multi_user = True
 ---
 ################################
-# Interviews for cosigners
+# Data for cosigners' interviews
 ################################
 ---
 #-------------------
@@ -51,6 +51,13 @@ code: |
   redis.set_data( signature_data_id, signature_data, expire=remote_siganure_expiration_ms )
   set_initial_redis_data = True
 ---
+## Do we want a default one for every multi-user interview?
+# Without a default, the developer will be alerted that they need to make one
+code: |
+  # When the saved redis data will expire: days * hours * minutes * seconds
+  # https://docassemble.org/docs/objects.html#DARedis
+  remote_siganure_expiration_ms = 1 * 6 * 60 * 60  # 6hrs
+---
 event: update_stored_data
 # Current use expectation - update final form
 # Possible way to deal with edited answers
@@ -60,7 +67,27 @@ code: |
   # reconsider( 'update_custom_redis_data' )  # Update form and signatures?
   # redis.set_data( signature_data_id, signature_data, expire=remote_siganure_expiration_ms )
 ---
-# Updates from remote user data for attachment and other things
+reconsider:
+  - form_to_sign
+#  - final_form
+code: |
+  make_sure_preview_is_accessible
+  # Whatever info you want to be able to use for the co-signers' interview
+  custom_signature_redis_data = {
+    'user_names': comma_and_list(users),
+    'preview': form_to_sign,
+    #'final_form': final_form,  # not updating yet
+    'user_email': users[0].email if defined('users[0].email') else None,
+    'user_mobile': users[0].mobile_number if defined('users[0].mobile_number') else None,
+    # So users will get notifications when users sign
+    'interview_url': shortenMe( interview_url_action('check_status', party_id=users[0].id) ).shortenedURL
+  }
+---
+code: |
+  form_to_sign.set_attributes(private=False, persistent=True)
+  make_sure_preview_is_accessible = True
+---
+# Get data from store to update attachment and other things
 code: |
   new_data = redis.get_data( signature_data_id )
   signing_parties = new_data[ 'parties' ]
@@ -78,9 +105,78 @@ code: |
 
   get_stored_data = True
 ---
+# Makes sure `has_signed` is always at least defined
+generic object: Individual
+code: |
+  x.has_signed = False
+---
+################################
+# Local interview
+################################
+---
+#-----------------------------
+# Gather cosigner message info
+---
+id: get cosigner info
+generic object: Individual
+code: |
+  x.name.first
+  x.mobile_number  # court info
+  x.send_method = x.sign_method
+  x.get_signature_info = True
+---
+id: how to send to cosigner
+generic object: Individual
+question: |
+  How will ${ x } sign this document?
+subquestion: |
+  ${ x } must sign this motion before you give it to the court. They can sign
+  
+  * on their computer,
+  * on their phone,
+  * ask you to sign for them,
+  * on your computer or phone, or
+  * on paper.
+    
+  If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
+  
+  How are you going to get ${ x }'s signature on this motion?
+fields:
+  - no label: x.sign_method
+    datatype: radio
+    choices:
+      - __Email__ ${ x } a link: email
+      - __Text__ ${ x } a link: text
+      - ${ x } asked me to sign their name for them: proxy
+      - ${ x } will sign with me at the end of the interview: local
+      - I will print my motion and ${ x } will sign the paper copy: physical
+  - What email should we use to ask for ${ x }'s signature?: x.signature_email
+    default: ${ x.email }
+    js show if: |
+      val("x.sign_method") == "email"
+  - What number should we text to ask for ${ x }'s signature?: x.signature_number
+    default: ${ x.mobile_number }
+    js show if: |
+      val("x.sign_method") == "text"
+---
+#### May have something in basic questions?
+id: cosigner court contact info
+generic object: Individual
+question: |
+  How should the court contact ${ x }?
+subquestion: |
+  Make sure you have ${ x.familiar() }'s permission to put this on the form.
+fields:
+  - Mobile number: x.mobile_number
+    required: False
+  - Other phone number: x.phone_number
+    required: False
+  - Email address: x.email    
+    datatype: email
+    required: False
+---
 #-------------------
 # Cosigner messages
-#-------------------
 ---
 # Keep in as the default
 code: |
@@ -97,6 +193,7 @@ code: |
     
   get_cosigner_signatures = True
 ---
+# Trigger notifications for all remote signers
 code: |
   for remote in remote_signers:
     remote.signature_url_was_sent
@@ -104,7 +201,7 @@ code: |
     trigger_initial_notifications  # for user
   request_remote_signatures = True
 ---
-# Send notifications to cosigners
+# Send notifications to a remote signer
 generic object: Individual
 code: |
   if x.send_method == 'text': 
@@ -112,6 +209,27 @@ code: |
   elif x.send_method == 'email':
     x.message_result = send_email(to=x.signature_email, template=x.email_template)
   x.signature_url_was_sent = True
+---
+id: cosigner sms
+generic object: Individual
+template: x.sms_template
+content: |
+  ${ x.familiar() }, please review and sign ${ users[0].familiar() }’s document. Use this link. ${ x.cosigner_url }
+---
+id: cosigner email
+reconsider: form_to_sign
+generic object: Individual
+template: x.email_template
+subject: |
+  ${ users[0] } needs your signature on a legal document.
+content: |
+  Dear ${ x },
+
+  ${ users[0] } created a legal document. Review it to see if you are willing to sign it.
+
+  [Tap here to look at the document](${ form_to_sign.url_for(external=True) }).
+
+  [Tap here to sign the document](${ x.cosigner_url }).
 ---
 generic object: Individual
 code: |
@@ -123,18 +241,8 @@ code: |
   )
   x.cosigner_url = shortenMe( url_str ).shortenedURL
 ---
-code: |  # key for data store
-  signature_data_id = get_random_chars()
----
-generic object: Individual
-code: |
-  x.id = get_random_chars()
----
-code: |
-  import random
-  import string
-  def get_random_chars(num_chars=10):
-    return ''.join(random.choice(string.ascii_lowercase) for i in range(10))
+#-------------------
+# User messages
 ---
 id: first user notifications
 code: |
@@ -156,14 +264,35 @@ code: |
 
   background_response()
 ---
-################################
-# Local interview
-################################
+id: notify user of links sent (sms)
+template: initial_sms_template
+content: |
+  % if len(remote_signers) > 1:
+  ${ users[0].familiar() }, we sent your document to your cosigners. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
+  % else:
+  ${ users[0].familiar() }, we sent your document to your cosigner. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
+  % endif
 ---
-# Makes sure `has_signed` is always at least defined
-generic object: Individual
-code: |
-  x.has_signed = False
+id: notify user of links sent (email)
+template: initial_email_template
+subject: |
+  Your document was sent to ${ comma_and_list( remote_signers ) }
+content: |
+  ${ users[0] },
+  
+  % if len( remote_signers ) > 1:
+  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when they sign it.
+  
+  You can also [tap here to check if ${ comma_and_list( remote_signers ) } have signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
+
+  % else:
+  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when ${ remote_signers } signs it.
+
+  You can also [tap here to check if ${ remote_signers } has signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
+  % endif
+---
+#--------------------
+# Download page info
 ---
 reconsider:
   - cosigners
@@ -189,8 +318,16 @@ code: |
 # Defaults
 ##################
 ---
-# Keep in as the default
+code: |  # key for data store
+  signature_data_id = get_random_chars()
+---
+generic object: Individual
 code: |
-  # When the saved redis data will expire: days * hours * minutes * seconds
-  # https://docassemble.org/docs/objects.html#DARedis
-  remote_siganure_expiration_ms = 1 * 6 * 60 * 60  # 6hrs
+  x.id = get_random_chars()
+---
+code: |
+  import random
+  import string
+  def get_random_chars(num_chars=10):
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(10))
+---

@@ -119,69 +119,9 @@ fields:
       name_suffix()
     required: False
 ---
-####
-id: how to send to cosigner
-generic object: Individual
-question: |
-  How will ${ x } sign this document?
-subquestion: |
-  ${ x } must sign this motion before you give it to the court. They can sign
-  
-  * on their computer,
-  * on their phone,
-  * ask you to sign for them,
-  * on your computer or phone, or
-  * on paper.
-    
-  If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
-  
-  How are you going to get ${ x }'s signature on this motion?
-fields:
-  - no label: x.sign_method
-    datatype: radio
-    choices:
-      - __Email__ ${ x } a link: email
-      - __Text__ ${ x } a link: text
-      - ${ x } asked me to sign their name for them: proxy
-      - ${ x } will sign with me at the end of the interview: local
-      - I will print my motion and ${ x } will sign the paper copy: physical
-  - What email should we use to ask for ${ x }'s signature?: x.signature_email
-    default: ${ x.email }
-    js show if: |
-      val("x.sign_method") == "email"
-  - What number should we text to ask for ${ x }'s signature?: x.signature_number
-    default: ${ x.mobile_number }
-    js show if: |
-      val("x.sign_method") == "text"
----
-####
-id: cosigner court contact info
-generic object: Individual
-question: |
-  How should the court contact ${ x }?
-subquestion: |
-  Make sure you have ${ x.familiar() }'s permission to put this on the form.
-fields:
-  - Mobile number: x.mobile_number
-    required: False
-  - Other phone number: x.phone_number
-    required: False
-  - Email address: x.email    
-    datatype: email
-    required: False
----
-####
-id: get cosigner info
-generic object: Individual
-code: |
-  x.name.first
-  x.mobile_number
-  x.send_method = x.sign_method
-  x.get_signature_info = True
----
+id: preview
 reconsider:
   - form_to_sign
-id: preview
 question: |
   Preview your document
 subquestion: |
@@ -232,86 +172,10 @@ progress: 99
 # Interface with redis handler
 #######################
 ---
-####?
-# Keep in as the default
 code: |
   # When the saved redis data will expire: days * hours * minutes * seconds
   # https://docassemble.org/docs/objects.html#DARedis
   remote_siganure_expiration_ms = 1 * 24 * 60 * 60  # 1 day
----
-####
-# Keep in as the default
-code: |
-  # DEVELOPERS: Use the name of your own remote entrypoint file
-  remote_signer_url_end = user_info().package + ':cosigner.yml'
----
-####
-reconsider:
-  - form_to_sign
-  - final_form
-code: |
-  # Whatever info you want to be able to use for the co-signers' interview
-  custom_signature_redis_data = {
-    'user_names': comma_and_list(users),
-    'preview': form_to_sign,
-    #'final_form': final_form,  # not updating yet
-    'user_email': users[0].email if defined('users[0].email') else None,
-    'user_mobile': users[0].mobile_number if defined('users[0].mobile_number') else None,
-    # So users will get notifications when users sign
-    'interview_url': shortenMe( interview_url_action('check_status', party_id=users[0].id) ).shortenedURL
-  }
----
-####
-id: cosigner sms
-generic object: Individual
-template: x.sms_template
-content: |
-  ${ x.familiar() }, please review and sign ${ users[0].familiar() }’s legal document. Use this link. ${ x.cosigner_url }
----
-####
-id: cosigner email
-reconsider: form_to_sign
-generic object: Individual
-template: x.email_template
-subject: |
-  ${ users[0] } needs your signature on a legal document.
-content: |
-  Dear ${ x },
-
-  ${ users[0] } created a legal document. Review it to see if you are willing to sign it.
-
-  [Tap here to look at the document](${ form_to_sign.url_for(external=True) }).
-
-  [Tap here to sign the document](${ x.cosigner_url }).
----
-####
-id: links sent to sms
-template: initial_sms_template
-content: |
-  % if len(remote_signers) > 1:
-  ${ users[0].familiar() }, we sent your document to your cosigners. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
-  % else:
-  ${ users[0].familiar() }, we sent your document to your cosigner. Use the link to see it. ${ shortenMe(interview_url_action('check_status', party_id=users[0].id)).shortenedURL }
-  % endif
----
-####
-id: links sent to email
-template: initial_email_template
-subject: |
-  Your document was sent to ${ comma_and_list( remote_signers ) }
-content: |
-  ${ users[0] },
-  
-  % if len( remote_signers ) > 1:
-  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when they sign it.
-  
-  You can also [tap here to check if ${ comma_and_list( remote_signers ) } have signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
-
-  % else:
-  We asked ${ comma_and_list( remote_signers ) } to sign your document. We will e-mail you when ${ remote_signers } signs it.
-
-  You can also [tap here to check if ${ remote_signers } has signed the document](${ interview_url_action('check_status', party_id=users[0].id) }).
-  % endif
 ---
 # Must come from an `action`. Needed for security.
 event: check_status
