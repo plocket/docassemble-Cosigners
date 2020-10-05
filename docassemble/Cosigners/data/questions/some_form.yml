@@ -71,16 +71,6 @@ code: |
   cosigners = codefendants
   all_signers = users + cosigners
 ---
-# Needed for cosigner functionality. In here for developer awareness.
-code: |
-  # Can only include proccessing action once per interview.
-  # Sends the emails and does whatever other `background_action`s are queued up.
-  # Commenting it out won't work. It will live on unless in an if or deleted.
-  if not get_info('process_action_done'):
-    set_info( process_action_done=True )
-    process_action()
-  process_action_if_not_processed = True
----
 # After the user signs, the links for the co-signers get sent
 event: x.after_signature
 generic object: Individual

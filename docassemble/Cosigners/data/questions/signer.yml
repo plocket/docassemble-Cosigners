@@ -92,7 +92,6 @@ code: |
   set_initial_redis_data
   request_remote_signatures
   
-  process_action_if_not_processed  # We want the requests sent now if not before
   for local in local_signers:
     local.signature
     
@@ -137,12 +136,8 @@ code: |
   def get_random_chars(num_chars=10):
     return ''.join(random.choice(string.ascii_lowercase) for i in range(10))
 ---
-####
 id: first user notifications
 code: |
-  log('triggering notifications', 'console')
-  log( len(remote_signers) > 0, 'console' )
-  log( task_performed('send_initial_sms'), 'console' )
   background_action('send_initial_user_notifications')
   trigger_initial_notifications = True
 ---
@@ -150,12 +145,9 @@ event: send_initial_user_notifications
 code: |
   log('sending notifications')
   if len(remote_signers) > 0 and not task_performed('send_initial_sms'):
-    log('sms not sent')
     if defined( 'users[0].device_number' ) and users[0].device_number:
-      log('sending to device number')
       send_sms(task='send_initial_sms', to=users[0].device_number, template=initial_sms_template)
     elif defined( 'users[0].mobile_number' ) and users[0].mobile_number:
-      log('sending to mobile number')
       send_sms(task='send_initial_sms', to=users[0].mobile_number, template=initial_sms_template)
 
   if not task_performed('send_initial_email'):
