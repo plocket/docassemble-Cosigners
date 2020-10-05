@@ -50,15 +50,16 @@ code: |
     }
   signature_data[ 'parties' ] = parties
   
+  # DEVELOPER: you or your SMEs must decide how long you will store the document
   redis.set_data( signature_data_id, signature_data, expire=remote_siganure_expiration_ms )
   set_initial_redis_data = True
 ---
-## Do we want a default one for every multi-user interview?
-# Without a default, the developer will be alerted that they need to make one
-code: |
-  # When the saved redis data will expire: days * hours * minutes * seconds
-  # https://docassemble.org/docs/objects.html#DARedis
-  remote_siganure_expiration_ms = 1 * 6 * 60 * 60  # 6hrs
+### Do we want a default one for every multi-user interview?
+## Without a default, the developer will be alerted that they need to make one
+#code: |
+#  # When the saved redis data will expire: days * hours * minutes * seconds
+#  # https://docassemble.org/docs/objects.html#DARedis
+#  remote_siganure_expiration_ms = 1 * 6 * 60 * 60  # 6hrs
 ---
 event: update_stored_data
 # Current use expectation - update final form
