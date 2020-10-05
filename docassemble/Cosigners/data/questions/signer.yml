@@ -1,9 +1,8 @@
 comment: |
-  Some pre-made functionality for mutli-user signatures.
-
+  Pre-made functionality for cosigner signatures. For signing flow in general?
   `remote` in here refers to devices of signers other than the user or those using the user's device.
   
-  As usual, these can all be customized. It just hopes these help save brain cells.
+  As usual, these can all be customized. It just hopes to help save brain cells.
 ---
 # Make own function to make this more independent?
 modules:
@@ -18,6 +17,14 @@ objects:
 mandatory: True
 code: |
   multi_user = True
+---
+################################
+# Interviews for cosigners
+################################
+---
+#-------------------
+# Data store
+#-------------------
 ---
 # TODO: Consider changing model. First create the standard data in here, then send it to be modified/customized by the originating interview, then store it. Might be a model more suited to an advanced user, though.
 code: |
@@ -50,10 +57,10 @@ event: update_stored_data
 # Not quite sure what all to reconsider in this place, honestly
 code: |
   signature_data = redis.get_data( signature_data_id )
-  # reconsider( 'update_custom_redis_data' )  # Maybe
+  # reconsider( 'update_custom_redis_data' )  # Update form and signatures?
   # redis.set_data( signature_data_id, signature_data, expire=remote_siganure_expiration_ms )
 ---
-# Updates remote user data for doc and other things
+# Updates from remote user data for attachment and other things
 code: |
   new_data = redis.get_data( signature_data_id )
   signing_parties = new_data[ 'parties' ]
@@ -71,21 +78,38 @@ code: |
 
   get_stored_data = True
 ---
-# Makes sure `has_signed` is always at least defined
-generic object: Individual
+#-------------------
+# Cosigner messages
+#-------------------
+---
+# Keep in as the default
 code: |
-  x.has_signed = False
+  # DEVELOPERS: Use the name of your own remote entrypoint file
+  remote_signer_url_end = user_info().package + ':cosigner.yml'
 ---
 code: |
-  for remote_signer in remote_signers:
-    remote_signer.signature_url_was_sent  # Send message
+  custom_signature_redis_data
+  set_initial_redis_data
+  request_remote_signatures
+  
+  process_action_if_not_processed  # We want the requests sent now if not before
+  for local in local_signers:
+    local.signature
+    
+  get_cosigner_signatures = True
+---
+code: |
+  for remote in remote_signers:
+    remote.signature_url_was_sent
+  if len(remote_signers) > 0:
+    trigger_initial_notifications  # for user
   request_remote_signatures = True
 ---
+# Send notifications to cosigners
 generic object: Individual
 code: |
-  # TODO: Should this be `signature_number` and `signature_email`?
   if x.send_method == 'text': 
-    x.message_result = send_sms(task='send sms_template', to=x.signature_number, template=x.sms_template)
+    x.message_result = send_sms(to=x.signature_number, template=x.sms_template)
   elif x.send_method == 'email':
     x.message_result = send_email(to=x.signature_email, template=x.email_template)
   x.signature_url_was_sent = True
@@ -100,7 +124,7 @@ code: |
   )
   x.cosigner_url = shortenMe( url_str ).shortenedURL
 ---
-code: |
+code: |  # key for data store
   signature_data_id = get_random_chars()
 ---
 generic object: Individual
@@ -113,6 +137,62 @@ code: |
   def get_random_chars(num_chars=10):
     return ''.join(random.choice(string.ascii_lowercase) for i in range(10))
 ---
+####
+id: first user notifications
+code: |
+  log('triggering notifications', 'console')
+  log( len(remote_signers) > 0, 'console' )
+  log( task_performed('send_initial_sms'), 'console' )
+  background_action('send_initial_user_notifications')
+  trigger_initial_notifications = True
+---
+event: send_initial_user_notifications
+code: |
+  log('sending notifications')
+  if len(remote_signers) > 0 and not task_performed('send_initial_sms'):
+    log('sms not sent')
+    if defined( 'users[0].device_number' ) and users[0].device_number:
+      log('sending to device number')
+      send_sms(task='send_initial_sms', to=users[0].device_number, template=initial_sms_template)
+    elif defined( 'users[0].mobile_number' ) and users[0].mobile_number:
+      log('sending to mobile number')
+      send_sms(task='send_initial_sms', to=users[0].mobile_number, template=initial_sms_template)
+
+  if not task_performed('send_initial_email'):
+    if defined( 'users[0].email' ) and users[0].email:
+      send_email(task='send_initial_email', to=users[0], template=initial_email_template, attachments=form_to_sign)
+
+  background_response()
+---
+################################
+# Local interview
+################################
+---
+# Makes sure `has_signed` is always at least defined
+generic object: Individual
+code: |
+  x.has_signed = False
+---
+reconsider:
+  - cosigners
+  - all_signers
+code: |
+  who_sign_with_pen = [cos for cos in cosigners if cos.sign_method == 'physical']
+  all_digital_cosigners = [cos for cos in cosigners if cos not in who_sign_with_pen]
+  # Get signatures that will taken on this device
+  who_proxy_sign_for = [cos for cos in cosigners if cos.sign_method == 'proxy']
+  who_else_on_device = [cos for cos in cosigners if cos.sign_method == 'local']
+  local_signers = users + who_proxy_sign_for + who_else_on_device
+  # Used in here and for sending out for signatures (multiuser code)
+  remote_signers = all_signers.difference(local_signers + who_sign_with_pen)
+  collect_signer_types = True
+---
+# This is separate for a reason, but what was the reason? Does it still apply?
+code: |
+  unwilling_cosigners = [cos for cos in cosigners if hasattr(cos, 'willing_to_sign') and cos.willing_to_sign is False]
+---
+# Device choice for signature
+---
 ###################
 # Defaults
 ##################
@@ -122,8 +202,3 @@ code: |
   # When the saved redis data will expire: days * hours * minutes * seconds
   # https://docassemble.org/docs/objects.html#DARedis
   remote_siganure_expiration_ms = 1 * 6 * 60 * 60  # 6hrs
----
-# Keep in as the default
-code: |
-  # DEVELOPERS: Use the name of your own remote entrypoint file
-  remote_signer_url_end = user_info().package + ':cosigner.yml'

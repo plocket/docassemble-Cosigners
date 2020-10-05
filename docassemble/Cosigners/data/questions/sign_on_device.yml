@@ -6,8 +6,11 @@ comment: |
   ## Limitations:
   - Right now the signer can't pick any device they want. It only differentiates between using a computer and a mobile device. A mobile device will always only present a signature. The execution order for handling multiple devices is complex unless it's broken into multiple interviews.
 
-  TODO: Try new `session_local` da feature
+  TODO: Try new `session_local` da feature. I suspect it won't be completely sufficient. Need combo of device and user ids. I think `device` may have a thing now in that same section.
   TODO: Try using action arguments for every question to identify/verify devices
+---
+modules:
+  - docassemble.VirtualCourtToolbox.misc
 ---
 event: x.sign_on_device
 generic object: Individual
@@ -157,3 +160,34 @@ fields:
       - I signed: has_signed
       - I want to sign on my computer: wants_computer
       - I want to send the link to a different number: wants_mobile
+---
+############################
+# Messages
+############################
+---
+####**
+generic object: Individual
+code: |
+  if defined( x.attr_name( 'device_number' )):
+    x.message_result = send_sms( to=x.device_number, template=x.sms_device_template)
+  x.send_signature_link = True
+---
+####**
+generic object: Individual
+template: x.sms_device_template
+content: |
+  ${ x.familiar() }, tap the link to sign your document. ${ device_choice_url }
+---
+####?
+generic object: Individual
+code: |
+  # `action` experiments for true device choice begin here
+  long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
+  device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
+---
+####?
+# Triggered by new device
+event: signature_with_device_choice
+code: |
+  users[0].sign_on_device
+---

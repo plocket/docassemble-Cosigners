@@ -7,7 +7,7 @@ include:
   - docassemble.MAVirtualCourt:basic-questions.yml
 ---
 metadata:
-  title: Motion to Dismiss a Non-Essential Eviction
+  title: Cosigners
 ---
 mandatory: True
 code: |
@@ -69,45 +69,17 @@ code: |
 # Needed for cosigner functionality
 code: |
   cosigners = codefendants
----
-#####
-reconsider: cosigners
-code: |
   all_signers = users + cosigners
 ---
-#####
-reconsider:
-  - cosigners
-  - all_signers
+# Needed for cosigner functionality. In here for developer awareness.
 code: |
-  who_sign_with_pen = [cos for cos in cosigners if cos.sign_method == 'physical']
-  all_digital_cosigners = [cos for cos in cosigners if cos not in who_sign_with_pen]
-  # Get signatures that will taken on this device
-  who_proxy_sign_for = [cos for cos in cosigners if cos.sign_method == 'proxy']
-  who_else_on_device = [cos for cos in cosigners if cos.sign_method == 'local']
-  local_signers = users + who_proxy_sign_for + who_else_on_device
-  # Used in here and for sending out for signatures (multiuser code)
-  remote_signers = all_signers.difference(local_signers + who_sign_with_pen)
-  collect_signer_types = True
----
-####
-code: |
-  unwilling_cosigners = [cos for cos in cosigners if hasattr(cos, 'willing_to_sign') and cos.willing_to_sign is False]
----
-####
-code: |
-  custom_signature_redis_data
-  set_initial_redis_data
-  request_remote_signatures
-  
   # Can only include proccessing action once per interview.
-  # Commenting it out won't work. It will live on.
   # Sends the emails and does whatever other `background_action`s are queued up.
-  process_action()  # Needed? Probably - we want the requests sent now
-  for local in local_signers:
-    local.signature
-    
-  get_cosigner_signatures = True
+  # Commenting it out won't work. It will live on unless in an if or deleted.
+  if not get_info('process_action_done'):
+    set_info( process_action_done=True )
+    process_action()
+  process_action_if_not_processed = True
 ---
 # After the user signs, the links for the co-signers get sent
 event: x.after_signature
@@ -115,26 +87,6 @@ generic object: Individual
 code: |
   get_cosigner_signatures
   users[0].status
----
-# It's weird to ask this if they didn't start on another device and there's no provision for that right now. Could set a flag at the very start if we really want that.
-#id: ask wants to finish on phone
-#question: |
-#  Do you want to finish on your phone?
-#yesno: wants_to_finish_on_phone
----
-####
-event: phone_end
-question: |
-  Thank you
-subquestion: |
-  You can finish on your original device.
----
-####
-code: |
-  for remote in remote_signers:
-    remote.signature_url_was_sent
-  if len(remote_signers) > 0: trigger_initial_notification
-  request_remote_signatures = True
 ---
 #### Basic questions
 id: do you have codefendants
@@ -343,28 +295,6 @@ content: |
   [Tap here to sign the document](${ x.cosigner_url }).
 ---
 ####
-id: first user notifications
-code: |
-  background_action('send_initial_user_notifications')
-  trigger_initial_notification = True
----
-####
-# Can be done with less nesting, but I find it less readable
-event: send_initial_user_notifications
-code: |
-  if len(remote_signers) > 0 and not task_performed('send_initial_sms'):
-    if defined( 'users[0].device_number' ) and users[0].device_number:
-      send_sms(task='send_initial_sms', to=users[0].device_number, template=initial_sms_template)
-    elif defined( 'users[0].mobile_number' ) and users[0].mobile_number:
-      send_sms(task='send_initial_sms', to=users[0].mobile_number, template=initial_sms_template)
-
-  if not task_performed('send_initial_email'):
-    if defined( 'users[0].email' ) and users[0].email:
-      send_email(task='send_initial_email', to=users[0], template=initial_email_template, attachments=signatures_doc)
-
-  background_response()
----
-####
 id: links sent to sms
 template: initial_sms_template
 content: |
@@ -424,29 +354,14 @@ template: x.sms_device_template
 content: |
   ${ x.familiar() }, tap the link to sign your document. ${ device_choice_url }
 ---
+####?
 generic object: Individual
 code: |
   # `action` experiments for true device choice begin here
   long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
   device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
 ---
-####**
-code: |
-  # x.device_id?
-  signature_data_id = get_random_chars()
----
-####
-generic object: Individual
-code: |
-  x.id = get_random_chars()
----
-####
-code: |
-  import random
-  import string
-  def get_random_chars(num_chars=10):
-    return ''.join(random.choice(string.ascii_lowercase) for i in range(10))
----
+####?
 # Triggered by new device
 event: signature_with_device_choice
 code: |
@@ -493,49 +408,10 @@ subquestion: |
 
   ${ cosigner_status_section }
 
-  % if codefendants.number() > 0:
-  <hr/>
-  % endif
-  
-  <div class="dal-table">
-  <div class="form row">
-  
-  ${ document_icon_template }
-  ${ download_form_template }
-  ${ signatures_doc.document_buttons_template }
-  
-  </div>
-  <div class="next-steps row">
-  
-  ${ document_icon_template }
-  ${ download_next_steps_template }
-  ${ signatures_doc.document_buttons_template }
-  </div>
-  
-  <div class="email-pointer row">
-  <div class="instructions col-auto p-1">:envelope:</div>
-  <div class="instructions col-10 p-1">
-  
-  Scroll down to email the document to someone
-  
-  </div>
-  </div>
-  
-  </div>
-
 buttons:
   - Restart: restart
   
 attachment code: signatures_doc
-css: |
-  <style>
-    .dal-table {
-      /* background: rgb(220, 220, 220);*/
-      padding-top: .3em;
-      border-radius: 3px;
-      margin-bottom: 1em;
-    }
-  </style>
 ---
 # Edit below to change the contents of the status page
 ---
@@ -569,6 +445,10 @@ content: |
   
   % if len( remote_signers ) > 0:
   ${ action_button_html('javascript:daShowSpinner();daRefreshSubmit()', label='Check again <i class="fas fa-sync-alt"></i>', size='md') }
+  % endif
+
+  % if codefendants.number() > 0:
+  <hr/>
   % endif
 ---
 ####
@@ -656,47 +536,3 @@ template: x.signature_message_endpoint
 content: |
   ${ x.signature_email if x.send_method == "email" else x.signature_number }
 ---
-template: download_form_template
-content: |
-  <div class="descriptor col-6 p-1">
-  
-  ${ interview_short_title } Document
-  
-  </div>
----
-template: download_next_steps_template
-content: |
-  <div class="descriptor col-6 p-1">
-  
-  Instructions
-  
-  </div>
----
-template: document_icon_template
-content: |
-    <div class="type-icon col-auto p-1">:file:</div>
----
-generic object: DAFileCollection
-template: x.document_buttons_template
-content: |
-  <div class="download-doc col-auto p-1">
-    ${ action_button_html(
-      x.pdf.url_for(attachment=True),
-      new_window=False,
-      color="primary",
-      
-      label='Download :file-download:'
-      
-    ) }
-  </div>
-  
-  <div class="see-doc col-auto p-1">
-    ${ action_button_html(
-      x.pdf.url_for(inline=True),
-      new_window="True",
-      color="primary",
-      
-      label='View <i class="far fa-eye"></i>'
-      
-    ) }
-  </div>
