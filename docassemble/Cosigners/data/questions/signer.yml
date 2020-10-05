@@ -3,6 +3,8 @@ comment: |
   `remote` in here refers to devices of signers other than the user or those using the user's device.
   
   As usual, these can all be customized. It just hopes to help save brain cells.
+  
+  TODO: Try replacing `reconsider` with `depends on`
 ---
 # Make own function to make this more independent?
 modules:
@@ -125,6 +127,53 @@ code: |
   x.send_method = x.sign_method
   x.get_signature_info = True
 ---
+#### Basic questions
+id: do you have codefendants
+question: |
+  Is anyone filing with you?
+fields:
+  - no label: codefendants.there_are_any
+    datatype: radio
+    choices:
+      - I am filing this motion alone: False
+      - I talked to them and at least one of them wants to file with me: True
+---
+#### There may already be a basic question for this
+id: cosigner names
+reconsider: cosigners
+generic object: PeopleList
+question: |
+  % if i == 0:
+  What is your cosigner's name?
+  % else:
+  What is your ${ ordinal(i) } cosigner's name?
+  % endif
+fields:
+  - First Name: x[i].name.first
+  - Middle Name: x[i].name.middle
+    required: False
+  - Last Name: x[i].name.last
+  - Suffix: x[i].name.suffix
+    code: |
+      name_suffix()
+    required: False
+---
+#### May have something in basic questions?
+id: cosigner court contact info
+generic object: Individual
+question: |
+  How should the court contact ${ x }?
+subquestion: |
+  Make sure you have ${ x.familiar() }'s permission to put this on the form.
+fields:
+  - Mobile number: x.mobile_number
+    required: False
+  - Other phone number: x.phone_number
+    required: False
+  - Email address: x.email    
+    datatype: email
+    required: False
+---
 id: how to send to cosigner
 generic object: Individual
 question: |
@@ -159,21 +208,42 @@ fields:
     js show if: |
       val("x.sign_method") == "text"
 ---
-#### May have something in basic questions?
-id: cosigner court contact info
-generic object: Individual
+#### Basic questions
+id: codefendants
 question: |
-  How should the court contact ${ x }?
+  Is anyone else filing this motion with you?  
 subquestion: |
-  Make sure you have ${ x.familiar() }'s permission to put this on the form.
-fields:
-  - Mobile number: x.mobile_number
-    required: False
-  - Other phone number: x.phone_number
-    required: False
-  - Email address: x.email    
-    datatype: email
-    required: False
+  % if len(codefendants.elements) > 0:
+  You already told us about ${comma_and_list(set(codefendants.elements))}
+  % endif
+yesno: codefendants.there_is_another
+---
+# Only triggered for signers who user is signing for.
+# Using intrinsic names is not enough.
+id: proxy signature
+generic object: Individual
+if: |
+  x in who_proxy_sign_for
+question: |
+  Sign ${ x }'s name
+signature: x.signature
+under: |
+  ${ x }
+progress: 99
+---
+#--------------------
+# Device choice for signature
+---
+# Triggerd by .sign_on_device
+# Cosigner functionality needs this
+
+# After the user signs, the links for the co-signers get sent
+# TODO: Should this be in the opinionated file or in the developers' files?
+event: x.after_signature
+generic object: Individual
+code: |
+  get_cosigner_signatures
+  users[0].after_cosigners_signatures
 ---
 #-------------------
 # Cosigner messages
@@ -294,6 +364,11 @@ content: |
 #--------------------
 # Download page info
 ---
+## Defaults in case other code does not define these
+## Think this should be ok, but don't implement till it can be tested
+#code: cosigners = []
+---
+# All these rely on cosigners being defined
 reconsider:
   - cosigners
   - all_signers
@@ -309,13 +384,143 @@ code: |
   collect_signer_types = True
 ---
 # This is separate for a reason, but what was the reason? Does it still apply?
+reconsider: cosigners
 code: |
   unwilling_cosigners = [cos for cos in cosigners if hasattr(cos, 'willing_to_sign') and cos.willing_to_sign is False]
 ---
-# Device choice for signature
+id: check all signed
+reconsider:
+  - get_stored_data
+  - collect_signer_types
+# Is requested when people check on the status of the signatures
+code: |
+  # Statuses: sent, signed, unwilling, physical
+  for cos in all_digital_cosigners:
+    if not defined( cos.attr_name( 'signature' )):
+      all_signatures_in = False
+      break
+  else:
+    #trigger_final_notification
+    all_signatures_in = True
+  get_status_of_signatures = True
+---
+# Edit below to change the text of the status page
+---
+template: cosigner_status_section
+reconsider:
+  - get_stored_data
+  - collect_signer_types
+  - unwilling_cosigners
+content: |
+  
+  % if all_signatures_in:
+    ${ every_digital_signature_in_template }
+    
+  % else:
+  
+    % if len( unwilling_cosigners ) > 0:
+    ${ unwilling_list_template }
+
+    ${ unwilling_instructions }
+    <hr/>
+    % endif
+
+    ${ waiting_list_template }
+
+    ${ signed_list_template }
+  
+  % endif
+  
+  ${ paper_signature_list_template }
+  
+  % if len( remote_signers ) > 0:
+  ${ action_button_html('javascript:daShowSpinner();daRefreshSubmit()', label='Check again <i class="fas fa-sync-alt"></i>', size='md') }
+  % endif
+
+  % if codefendants.number() > 0:
+  <hr/>
+  % endif
+---
+template: every_digital_signature_in_template
+content: |
+  % if len( all_digital_cosigners ) > 1:
+  :check: ${ comma_and_list( all_digital_cosigners )} have signed.
+  % elif len( all_digital_cosigners ) > 0:
+  :check: ${ all_digital_cosigners[0] } has signed.
+  % endif
+---
+template: unwilling_list_template
+content: |
+  % for signer in unwilling_cosigners:
+  :times: ${ signer } refused to sign your motion. We sent 
+  it to ${ signer } at **${ signer.signature_message_endpoint }**.[BR]
+  % endfor
+---
+template: unwilling_instructions
+content: |
+  % if len( unwilling_cosigners ) > 1:
+  **You do not need ${ comma_and_list([str(person) + "'s" for person in unwilling_cosigners]) } signatures
+  to file the motion. You can:**
+
+  * Download and file the document. You can ask
+  ${ comma_and_list(unwilling_cosigners) } to sign the paper
+  copy. If they do not sign the paper copy, you can cross out their
+  names and file it anyway. **Or,**
+  * Start the interview again. Use the 'Restart'
+  button. You can leave out ${ comma_and_list(unwilling_cosigners) }. **Or,**
+  * You can file the document as it is.
+  
+  % elif len( unwilling_cosigners ) > 0:
+  **You do not need ${ unwilling_cosigners[0] }'s signature
+  to file the document. You can:**
+
+  * Download and file the document. You can ask
+  ${ unwilling_cosigners[0] } to sign the paper
+  copy. If they do not sign the paper copy, you can cross out their
+  name and file it anyway. **Or,**
+  * Start the interview again. Use the 'Restart'
+  button. You can leave out ${ unwilling_cosigners[0] }. **Or,**
+  * You can file the document as it is.
+  
+  % endif
+---
+template: waiting_list_template
+content: |
+  % for signer in remote_signers:
+  % if not hasattr(signer, 'signature') and (not hasattr(signer,'willing_to_sign') or not signer.willing_to_sign is False):
+  :envelope: You sent a message to ${ signer } at
+  ${ signer.signature_message_endpoint } to sign the
+  document. They have not signed yet.[BR]
+  % endif
+  % endfor
+---
+template: signed_list_template
+content: |
+  % for signer in codefendants:
+  % if hasattr(signer, 'signature'):
+  :check: ${ signer } has signed[BR]
+  % endif
+  % endfor
+---
+template: paper_signature_list_template
+content: |
+  % if len( who_sign_with_pen ) > 0:
+  :pen-alt: ${ comma_and_list( who_sign_with_pen ) } will sign on the document when you print it.
+  % endif
+
+#  % for signer in who_sign_with_pen:
+#  :pen-alt: ${ signer } will sign on the document when you print it.[BR]
+#  % endfor
+---
+# `template` so it gets recalculated each time (I think)
+# Separate so it can be reused and the text for it can be easily edited.
+generic object: Individual
+template: x.signature_message_endpoint
+content: |
+  ${ x.signature_email if x.send_method == "email" else x.signature_number }
 ---
 ###################
-# Defaults
+# Data helpers
 ##################
 ---
 code: |  # key for data store
