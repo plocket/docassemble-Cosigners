@@ -15,7 +15,6 @@ code: |
 ---
 modules:
   - docassemble.base.util
-  - docassemble.VirtualCourtToolbox.misc
 ---
 objects:
   - codefendants: PeopleList.using(complete_attribute='complete')
@@ -71,8 +70,8 @@ code: |
   cosigners = codefendants
   all_signers = users + cosigners
 ---
-# DEVELOPER: Cosigner functionality gives you this
-event: x.after_cosigners_signatures
+# DEVELOPER: Cosigner functionality triggers this at the end
+event: x.after_other_signer_signatures_sent
 generic object: Individual
 code: |
   users[0].status
@@ -100,10 +99,13 @@ attachment:
   docx template file: test_signatures.docx
   variable name: preview_doc
 ---
-reconsider:
+# invalidates values so it will be recalculated when it is used. It's under-used so may have some bugs. It's conceptually the right feature to use.
+depends on:
   - signatures_doc
+# will reconsider on every page load on a page where it's referenced. But PDFs take a long time.
+# reconsider: True
 code: |
-  final_form = pdf_concatenate(signatures_doc, filename="final-signatures-doc.pdf")
+  final_form = pdf_concatenate(signatures_doc, filename="final-signatures-doc.pdf") #cover_page, filename="final-signatures-doc.pdf")
   final_form.set_attributes(private=False, persistent=True)
 ---
 attachment: 
@@ -120,10 +122,9 @@ code: |
   # https://docassemble.org/docs/objects.html#DARedis
   remote_siganure_expiration_ms = 1 * 24 * 60 * 60  # 1 day
 ---
-#---------------------
-# Device choice
----
-# Must come from an `action`. Needed for security.
+# DEVELOPER: Triggered by user following the link in a
+# notification about other signer's behavior.
+# `action` allows check for authorization.
 event: check_status
 code: |
   if action_argument('party_id') == users[0].id:
@@ -135,37 +136,6 @@ id: 404
 event: unauthorized
 code: |
   response('Page not found', response_code=404)
----
-######################
-# Interfacing with code to let user choose which device to sign on
-######################
----
-####**
-generic object: Individual
-code: |
-  # TODO: Should this be in sign_on_device.yml?
-  if defined( x.attr_name( 'device_number' )):
-    x.message_result = send_sms(task='send link to other device', to=x.device_number, template=x.sms_device_template)
-  x.send_signature_link = True  # Used by sign_on_device.yml
----
-####**
-generic object: Individual
-template: x.sms_device_template
-content: |
-  ${ x.familiar() }, tap the link to sign your document. ${ device_choice_url }
----
-####?
-generic object: Individual
-code: |
-  # `action` experiments for true device choice begin here
-  long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
-  device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
----
-####?
-# Triggered by new device
-event: signature_with_device_choice
-code: |
-  users[0].sign_on_device
 ---
 #################
 # Interview-specific UI
@@ -180,8 +150,8 @@ reconsider:
   - collect_signer_types
   - unwilling_cosigners
   - all_signatures_in
-  - signatures_doc
-  - final_form
+  - signatures_doc  # DAFileCollection
+  - final_form  # DAFile
 question: |
   % if all_signatures_in:
   Your document is ready

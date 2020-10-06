@@ -8,6 +8,7 @@ comment: |
 
   TODO: Try new `session_local` da feature. I suspect it won't be completely sufficient. Need combo of device and user ids. I think `device` may have a thing now in that same section.
   TODO: Try using action arguments for every question to identify/verify devices
+  TODO: Does this need `multi_user` when the parent interview doesn't have it?
 ---
 modules:
   - docassemble.VirtualCourtToolbox.misc
@@ -60,7 +61,7 @@ code: |
   x.has_signed = False
 ---
 ###################
-#  Interfaces directly with choosing another device
+#  Questions
 ##################
 ---
 id: x.willing_to_sign
@@ -99,24 +100,15 @@ script: |
 id: x.signature
 generic object: Individual
 question: |
-  x.signature
+  ${ x }, sign below
 signature: x.signature
 ---
+# DEVELOPER: Copy this and use it to lead to the next code or question block.
 id: x.after_signature
 event: x.after_signature
 generic object: Individual
 code: |
   x.status
----
-###################
-#  Questions triggered by above code interfacing code
-##################
----
-#id: x.status
-#event: x.status
-#generic object: Individual
-#question: |
-#  x.status
 ---
 id: link for mobile
 generic object: Individual
@@ -165,29 +157,24 @@ fields:
 # Messages
 ############################
 ---
-####**
 generic object: Individual
 code: |
   if defined( x.attr_name( 'device_number' )):
     x.message_result = send_sms( to=x.device_number, template=x.sms_device_template)
   x.send_signature_link = True
 ---
-####**
 generic object: Individual
 template: x.sms_device_template
 content: |
   ${ x.familiar() }, tap the link to sign your document. ${ device_choice_url }
 ---
-####?
 generic object: Individual
 code: |
   # `action` experiments for true device choice begin here
   long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
   device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
 ---
-####?
 # Triggered by new device
 event: signature_with_device_choice
 code: |
   users[0].sign_on_device
----

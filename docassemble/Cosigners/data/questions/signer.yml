@@ -5,6 +5,11 @@ comment: |
   As usual, these can all be customized. It just hopes to help save brain cells.
   
   TODO: Try replacing `reconsider` with `depends on`
+  TODO:
+  1. Invalidate signatures if form changes or 
+  1. DECISION: "You cannot change the form" AND "You will not be able to change it after someone else has signed it" or 
+  1. "You have changed the form and need to get it signed again."
+  TODO: invalidate signatures if this is a copy.
 ---
 # Make own function to make this more independent?
 modules:
@@ -86,6 +91,13 @@ code: |
     'interview_url': shortenMe( interview_url_action('check_status', party_id=users[0].id) ).shortenedURL
   }
 ---
+depends on: final_form
+code: |
+  # get redis data
+  # change redis data
+  # store redis data
+  update_final_form = True
+---
 code: |
   form_to_sign.set_attributes(private=False, persistent=True)
   make_sure_preview_is_accessible = True
@@ -105,7 +117,7 @@ code: |
         signer.willing_to_sign = True
       elif signing_parties[ signer.id ][ 'willing_to_sign' ] is False:
         signer.willing_to_sign = False
-
+  
   get_stored_data = True
 ---
 # Makes sure `has_signed` is always at least defined
@@ -120,6 +132,9 @@ code: |
 #-----------------------------
 # Gather cosigner message info
 ---
+# TODO: From notice of limited appearance, other-signer info gathering might be better for the developer to determine.
+# DEVELOPER: Copy this and decide what information you need
+# about the other signers.
 id: get cosigner info
 generic object: Individual
 code: |
@@ -129,11 +144,11 @@ code: |
   x.get_signature_info = True
 ---
 #### Basic questions
-id: do you have codefendants
+id: do you have cosigners
 question: |
   Is anyone filing with you?
 fields:
-  - no label: codefendants.there_are_any
+  - no label: cosigners.there_are_any
     datatype: radio
     choices:
       - I am filing this motion alone: False
@@ -201,23 +216,23 @@ fields:
       - ${ x } will sign with me at the end of the interview: local
       - I will print my motion and ${ x } will sign the paper copy: physical
   - What email should we use to ask for ${ x }'s signature?: x.signature_email
-    default: ${ x.email }
+    default: ${ showifdef( x.attr_name( 'email' )) }
     js show if: |
       val("x.sign_method") == "email"
   - What number should we text to ask for ${ x }'s signature?: x.signature_number
-    default: ${ x.mobile_number }
+    default: ${ showifdef( x.attr_name( 'mobile_number' )) }
     js show if: |
       val("x.sign_method") == "text"
 ---
 #### Basic questions
-id: codefendants
+id: cosigners
 question: |
   Is anyone else filing this motion with you?  
 subquestion: |
-  % if len(codefendants.elements) > 0:
-  You already told us about ${comma_and_list(set(codefendants.elements))}
+  % if len(cosigners.elements) > 0:
+  You already told us about ${comma_and_list(set(cosigners.elements))}
   % endif
-yesno: codefendants.there_is_another
+yesno: cosigners.there_is_another
 ---
 # Only triggered for signers who user is signing for.
 # Using intrinsic names is not enough.
@@ -235,6 +250,8 @@ progress: 99
 #--------------------
 # Device choice for signature
 ---
+# DEVELOPER: Copy this and use it to lead to the next code or question block.
+
 # Triggerd by .sign_on_device
 # Cosigner functionality needs this
 
@@ -244,7 +261,7 @@ event: x.after_signature
 generic object: Individual
 code: |
   get_cosigner_signatures
-  users[0].after_cosigners_signatures
+  users[0].after_other_signer_signatures_sent
 ---
 #-------------------
 # Cosigner messages
@@ -438,7 +455,7 @@ content: |
   ${ action_button_html('javascript:daShowSpinner();daRefreshSubmit()', label='Check again <i class="fas fa-sync-alt"></i>', size='md') }
   % endif
 
-  % if codefendants.number() > 0:
+  % if len(cosigners) > 0:
   <hr/>
   % endif
 ---
@@ -497,7 +514,7 @@ content: |
 ---
 template: signed_list_template
 content: |
-  % for signer in codefendants:
+  % for signer in cosigners:
   % if hasattr(signer, 'signature'):
   :check: ${ signer } has signed[BR]
   % endif
