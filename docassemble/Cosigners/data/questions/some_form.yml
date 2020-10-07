@@ -2,9 +2,13 @@
 # TODO: Explore new `session_local`, etc. features
 ---
 include:
+  # The order has to be this way to show proxy signature text
+  # correctly, but this behavior is hidden. Maybe better to
+  # handle it in basic-questions itself? Will have to work out
+  # other defaults that are currently being overriden.
+  - docassemble.MAVirtualCourt:basic-questions.yml
   - sign_on_device.yml
   - signer.yml
-  - docassemble.MAVirtualCourt:basic-questions.yml
 ---
 metadata:
   title: Cosigners
@@ -67,11 +71,12 @@ code: |
 ---
 # DEVELOPER: Cosigner functionality needs this
 code: |
-  cosigners = codefendants
-  all_signers = users + cosigners
+  other_signers = codefendants
+  # Can't be abstracted in case other signers need to be included.
+  all_signers = users + other_signers
 ---
-# DEVELOPER: Cosigner functionality triggers this at the end
-event: x.after_other_signer_signatures_sent
+# DEVELOPER: Cosigner functionality gives you this
+event: x.after_other_signers_signatures_sought
 generic object: Individual
 code: |
   users[0].status
@@ -100,7 +105,7 @@ attachment:
   variable name: preview_doc
 ---
 # invalidates values so it will be recalculated when it is used. It's under-used so may have some bugs. It's conceptually the right feature to use.
-depends on:
+reconsider:
   - signatures_doc
 # will reconsider on every page load on a page where it's referenced. But PDFs take a long time.
 # reconsider: True
@@ -122,9 +127,7 @@ code: |
   # https://docassemble.org/docs/objects.html#DARedis
   remote_siganure_expiration_ms = 1 * 24 * 60 * 60  # 1 day
 ---
-# DEVELOPER: Triggered by user following the link in a
-# notification about other signer's behavior.
-# `action` allows check for authorization.
+# DEVELOPER: (for other_signers) Triggered by user following the link in a notification about other signer's behavior. `action` allows check for authorization.
 event: check_status
 code: |
   if action_argument('party_id') == users[0].id:
@@ -148,7 +151,7 @@ event: users[0].status
 reconsider:
   - get_stored_data
   - collect_signer_types
-  - unwilling_cosigners
+  - unwilling_other_signers
   - all_signatures_in
   - signatures_doc  # DAFileCollection
   - final_form  # DAFile
@@ -160,10 +163,9 @@ question: |
   % endif
 subquestion: |
 
-  ${ cosigner_status_section }
+  ${ other_signers_status_section }
 
 buttons:
   - Restart: restart
   
 attachment code: signatures_doc
----

@@ -108,7 +108,7 @@ id: x.after_signature
 event: x.after_signature
 generic object: Individual
 code: |
-  x.status
+  # Whatever you want to do next
 ---
 id: link for mobile
 generic object: Individual
@@ -170,7 +170,7 @@ content: |
 ---
 generic object: Individual
 code: |
-  # `action` experiments for true device choice begin here
+  # `action` experiments for true device choice would begin here
   long_device_choice_url = interview_url_action( 'signature_with_device_choice', device_id='tbd', signature_data_id=signature_data_id, party_id=x.id )
   device_choice_url = shortenMe( long_device_choice_url ).shortenedURL
 ---
