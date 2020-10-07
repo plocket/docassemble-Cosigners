@@ -537,7 +537,7 @@ content: |
   % for signer in remote_signers:
   % if not hasattr(signer, 'signature') and (not hasattr(signer,'willing_to_sign') or not signer.willing_to_sign is False):
   :envelope: You sent a message to ${ signer } at
-  ${ signer.signature_message_endpoint } to sign the
+  **${ signer.signature_message_endpoint }** to sign the
   document. They have not signed yet.[BR]
   % endif
   % endfor

@@ -77,7 +77,7 @@ code: |
   users[0].sign_on_device
 ---
 # Cosigner functionality triggers this
-event: x.after_other_signer_signatures_sent
+event: x.after_other_signers_signatures_sought
 generic object: Individual
 code: |
   download
@@ -203,8 +203,8 @@ code: |
   clients.there_are_any = True
 ---
 code: |  # Cosigner functionality needs this
-  cosigners = clients
-  all_signers = users + cosigners
+  other_signers = clients
+  all_signers = users + other_signers
 ---
 id: events or issues
 question: |
@@ -352,16 +352,14 @@ attachment:
   docx template file: notice_of_limited_appearance.docx
   variable name: notice_of_limited_appearance
 ---
-id: attorney signature
-question: |
-  Your signature
-subquestion: | 
-  You can sign below using the mouse or touchpad of your computer. By clicking "Next" you will be able to continue the interview and text your client a link to sign this form.
-signature: users[0].signature
-under: |
-  ${users[0]}
-progress: 99
----
+#id: attorney signature
+#question: |
+#  Your signature
+#signature: users[0].signature
+#under: |
+#  ${users[0]}
+#progress: 99
+#---
 id: date of attorney signature
 question: |
  Signature date on form
@@ -370,12 +368,16 @@ fields:
     datatype: date
     default: ${today()}
 ---
+template: unwilling_instructions
+content: |
+  
+---
 id: download final form
 event: download
 reconsider:
   - get_stored_data
   - collect_signer_types
-  - unwilling_cosigners
+  - unwilling_other_signers
   - all_signatures_in
 question: |
   % if all_signatures_in:
@@ -384,7 +386,7 @@ question: |
   ${ clients[0] } still needs to sign your document
   % endif
 subquestion: |
-  ${ cosigner_status_section }
+  ${ other_signers_status_section }
 
   Look over the form below.
   
