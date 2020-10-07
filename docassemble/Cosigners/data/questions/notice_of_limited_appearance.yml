@@ -368,6 +368,7 @@ fields:
     datatype: date
     default: ${today()}
 ---
+# Customize to leave out default instructions for unwilling signers
 template: unwilling_instructions
 content: |
   
