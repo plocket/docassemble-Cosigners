@@ -14,6 +14,7 @@ comment: |
 # Make own function to make this more independent?
 modules:
   - docassemble.VirtualCourtToolbox.misc
+  - .other_signer
 ---
 include:
   - sign_on_device.yml
@@ -190,32 +191,89 @@ fields:
     datatype: email
     required: False
 ---
-id: how to send to other signer
+variable name: practice
+data:
+  - Apple: Apple
+  - Pair: Pair
+---
+#code: |
+#  def sign_method_choices( x, desired_fields ):
+#    choices =  []
+#    if "email" in desired_fields:
+#      choices.append({ "label": "Email", "field": "email"})
+#    if "text" in desired_fields:
+#      choices.append({ "label": "Text", "field": "text"})
+#    
+#    return choices
+---
+comment: |
+  id: how to send to other signer
+  generic object: Individual
+  question: |
+    How will ${ x } sign this document?
+  subquestion: |
+    ${ x.familiar() } must sign this before you give it to the court. They can sign
+
+    * on their computer,
+    * on their phone,
+    * ask you to sign for them,
+    * on your computer or phone, or
+    * on paper.
+
+    If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
+
+    How are you going to get ${ x.familiar() }'s signature on this document?
+  fields:
+    - no label: x.sign_method
+      datatype: radio
+      code: |
+        sign_method_choices(x, ["proxy", "paper"])
+    - What email should we use to ask for ${ x.familiar() }'s signature?: x.signature_email
+      default: ${ showifdef( x.attr_name( 'email' )) }
+      js show if: |
+        val("x.sign_method") == "email"
+    - What number should we text to ask for ${ x.familiar() }'s signature?: x.signature_number
+      default: ${ showifdef( x.attr_name( 'mobile_number' )) }
+      js show if: |
+        val("x.sign_method") == "text"
+---
+# DEVELOPER: If you want to show fewer choices to the user, copy this code to your file and take out the choices you don't want. The order won't change.
+code: |
+  signature_options_desired = ["email", "text", "proxy", "local", "paper"]
+---
+# DEVELOPER: to show only selected choices, copy `signature_options_desired` or copy and paste the code in the comment at the bottom and adjust it to your need.
+id: AL how to send to other signer
 generic object: Individual
 question: |
   How will ${ x } sign this document?
 subquestion: |
   ${ x.familiar() } must sign this before you give it to the court. They can sign
   
-  * on their computer,
-  * on their phone,
-  * ask you to sign for them,
-  * on your computer or phone, or
-  * on paper.
-    
+  % if "email" in signature_options_desired:
+  * on their computer
+  % endif
+  % if "text" in signature_options_desired:
+  * on their phone
+  % endif
+  % if "proxy" in signature_options_desired:
+  * ask you to sign for them
+  % endif
+  % if "local" in signature_options_desired:
+  * on **your** computer or phone
+  % endif
+  % if "paper" in signature_options_desired:
+  * on paper
+  % endif
+  
   If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
   
-  How are you going to get ${ x.familiar() }'s signature on this motion?
+  How are you going to get ${ x.familiar() }'s signature on this document?
+  
 fields:
-  - no label: x.sign_method
+  - no label: x.sign_method  # Might be clearer to keep this out of the module
     datatype: radio
-    choices:
-    
-      - __Email__ ${ x.familiar() } a link: email
-      - __Text__ ${ x.familiar() } a link: text
-      - ${ x.familiar() } asked me to sign their name for them: proxy
-      - ${ x.familiar() } will sign with me at the end of the interview: local
-      - I will print my motion and ${ x.familiar() } will sign the paper copy: physical
+    code: |
+      sign_method_choices( x, signature_options_desired )
   - What email should we use to ask for ${ x.familiar() }'s signature?: x.signature_email
     default: ${ showifdef( x.attr_name( 'email' )) }
     js show if: |
@@ -224,6 +282,132 @@ fields:
     default: ${ showifdef( x.attr_name( 'mobile_number' )) }
     js show if: |
       val("x.sign_method") == "text"
+comment: |
+  id: custom how to send to other signer
+  generic object: Individual
+  question: |
+    How will ${ x } sign this document?
+  subquestion: |
+    ${ x.familiar() } must sign this before you give it to the court. They can sign
+
+    * on their computer,
+    * on their phone,
+    * ask you to sign for them,
+    * on **your** computer or phone, **or**
+    * on paper.
+
+    If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
+
+    How are you going to get ${ x.familiar() }'s signature on this document?
+
+  fields:
+    - no label: x.sign_method  # Might be clearer to keep this out of the module
+      datatype: radio
+      choices:
+        - __Email__ ${ x.familiar() }: email
+        - __Text__ ${ x.familiar() }: text
+        - ${ x.familiar() } asked me to sign their name for them: proxy
+        - ${ x.familiar() } will sign with me at the end of the interview: local
+        - I will print my document and ${ x.familiar() } will sign the paper copy: paper
+    - What email should we use to ask for ${ x.familiar() }'s signature?: x.signature_email
+      default: ${ showifdef( x.attr_name( 'email' )) }
+      js show if: |
+        val("x.sign_method") == "email"
+    - What number should we text to ask for ${ x.familiar() }'s signature?: x.signature_number
+      default: ${ showifdef( x.attr_name( 'mobile_number' )) }
+      js show if: |
+        val("x.sign_method") == "text"
+---
+# DEVELOPER: Copy this to your file customize the 'email' `x.send_method` choice
+generic object: Individual
+template: x.sign_method_label_email
+content: |
+  __Email__ ${ x.familiar() }
+---
+# DEVELOPER: Copy this to your file customize the 'text' `x.send_method` choice
+generic object: Individual
+template: x.sign_method_label_text
+content: |
+  __Text__ ${ x.familiar() }
+---
+# DEVELOPER: Copy this to your file customize the 'proxy' `x.send_method` choice
+generic object: Individual
+template: x.sign_method_label_proxy
+content: |
+  ${ x.familiar() } asked me to sign their name for them
+---
+# DEVELOPER: Copy this to your file customize the 'local' `x.send_method` choice
+generic object: Individual
+template: x.sign_method_label_local
+content: |
+  ${ x.familiar() } will sign with me at the end of the interview
+---
+# DEVELOPER: Copy this to your file customize the 'paper' `x.send_method` choice
+generic object: Individual
+template: x.sign_method_label_paper
+content: |
+  I will print my document and ${ x.familiar() } will sign the paper copy
+---
+comment: |
+  variable name: signature_options
+  data:
+    email: "* on their computer"
+  ---
+  template: signature_options_list
+  content: |
+    * on their computer,
+    * on their phone,
+    * ask you to sign for them,
+    * on your computer or phone, or
+    * on paper.
+  ---
+  template: signature_options_email
+  content: |
+    * on their computer
+  ---
+  template: signature_options_text
+  content: |
+    * on their phone
+  ---
+  template: signature_options_proxy
+  content: |
+    * ask you to sign for them
+---
+comment: |
+  id: how to send to other signer
+  generic object: Individual
+  question: |
+    How will ${ x } sign this document?
+  subquestion: |
+    ${ x.familiar() } must sign this before you give it to the court. They can sign
+
+    * on their computer,
+    * on their phone,
+    * ask you to sign for them,
+    * on your computer or phone, or
+    * on paper.
+
+    If you sign on your computer or phone we will send you a link to draw your signature with your mouse or finger.
+
+    How are you going to get ${ x.familiar() }'s signature on this document?
+  fields:
+    - no label: x.sign_method
+      datatype: radio
+      choices:
+        - code: other_signer_email_field
+        - __Email__ ${ x.familiar() } a link: email
+        - __Text__ ${ x.familiar() } a link: text
+        - ${ x.familiar() } asked me to sign their name for them: proxy
+        - ${ x.familiar() } will sign with me at the end of the interview: local
+        - I will print my document and ${ x.familiar() } will sign the paper copy: paper
+    - What email should we use to ask for ${ x.familiar() }'s signature?: x.signature_email
+      default: ${ showifdef( x.attr_name( 'email' )) }
+      js show if: |
+        val("x.sign_method") == "email"
+    - What number should we text to ask for ${ x.familiar() }'s signature?: x.signature_number
+      default: ${ showifdef( x.attr_name( 'mobile_number' )) }
+      js show if: |
+        val("x.sign_method") == "text"
 ---
 #### Basic questions?
 id: are there more other signers
@@ -410,7 +594,7 @@ reconsider:
   - other_signers
   - all_signers
 code: |
-  who_sign_with_pen = [cos for cos in other_signers if cos.sign_method == 'physical']
+  who_sign_with_pen = [cos for cos in other_signers if cos.sign_method == 'paper']
   all_digital_other_signers = [cos for cos in other_signers if cos not in who_sign_with_pen]
   # Get signatures that will be taken on this device
   who_proxy_sign_for = [cos for cos in other_signers if cos.sign_method == 'proxy']
@@ -432,7 +616,7 @@ reconsider:
   - collect_signer_types
 # Is requested when people check on the status of the signatures
 code: |
-  # Statuses: sent, signed, unwilling, physical
+  # Statuses: sent, signed, unwilling, paper
   for cos in all_digital_other_signers:
     if not defined( cos.attr_name( 'signature' )):
       all_signatures_in = False
@@ -496,7 +680,7 @@ content: |
 template: unwilling_list_template
 content: |
   % for signer in unwilling_other_signers:
-  :times: ${ signer } refused to sign your motion. We sent 
+  :times: ${ signer } refused to sign your document. We sent 
   it to ${ signer.familiar() } at **${ signer.signature_message_endpoint }**.[BR]
   % endfor
 ---
@@ -506,7 +690,7 @@ template: unwilling_instructions
 content: |
   % if len( unwilling_other_signers ) > 1:
   **You do not need ${ comma_and_list([str(person) + "'s" for person in unwilling_other_signers]) } signatures
-  to file the motion. You can:**
+  to file the document. You can:**
 
   * Download and file the document. You can ask
   ${ comma_and_list(unwilling_other_signers) } to sign the paper

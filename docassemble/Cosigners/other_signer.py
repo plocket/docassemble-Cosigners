@@ -1,9 +1,14 @@
-from docassemble.base.util import log, DARedis, Individual, today#, DAObject
+from docassemble.base.util import log, DARedis, Individual, today, value#, DAObject
 
 redis = DARedis()
 
 """
-This script supplies functions for interacting with the signer's stored data - data relevant to signatures. It is currently using Redis. It has two main purposes:
+This script supplies functions to help as for non-user signatures on other devices.
+## Fields:
+Helps the developer build fields for relevant questions
+
+## Stored data:
+It interacts with the signer's stored data - data relevant to signatures. It is currently using Redis. It has two main purposes:
 1. Setting attributes of the signer based on the stored data.
 1. Storing new attributes of the signer.
 
@@ -11,6 +16,23 @@ The data is assumed to be stored as a dictionary.
 
 (Not sure this is correct documentation syntax, but not sure where to put these general concepts.)
 """
+
+# How to make these translatable?
+def sign_method_choices( x, desired_fields ):
+  choices =  []
+  if "email" in desired_fields:
+    choices.append({ "email": value( x.attr_name( 'sign_method_label_email' )) })
+  if "text" in desired_fields:
+    choices.append({ "text": x.sign_method_label_text })
+  if "proxy" in desired_fields:
+    choices.append({ "proxy": x.sign_method_label_proxy })
+  if "local" in desired_fields:
+    choices.append({ "local": x.sign_method_label_local })
+  if "paper" in desired_fields:
+    choices.append({ "paper": x.sign_method_label_paper })
+  
+  return choices
+
 
 def store_signer_attribute( signature_data_id, party_id, key, value ):
   """Stores one signer attribute in the dictionary of that signing party (currently using Redis.)
